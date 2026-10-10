@@ -1,0 +1,92 @@
+# ========================================================
+# AuctionBridge configuration file
+# Used to bridge AuctionHouse data to the web, providing a read-only REST API and real-time push
+# ========================================================
+
+# HTTP embedded web service configuration
+server:
+  # Plugin server language: zh_CN, zh_TW, en_US
+  language: "en_US"
+  host: "127.0.0.1"
+  port: 8085
+  # Auto-generate a strong API key on first startup and write it here; you can also replace it manually with your own key
+  # Clients must include 'X-API-Key: your_secret_key' in the request header or '?apiKey=your_secret_key' in the URL
+  api-key: ""
+  
+  # Whether to enable cross-origin resource sharing (CORS)
+  cors:
+    enabled: true
+    # List of allowed source domains, supports '*' wildcard or specific frontend domains
+    allowed-origins:
+      - "http://localhost:3000"
+      - "http://localhost:5173"
+      - "https://auction.myserver.net"
+    allowed-headers:
+      - "Content-Type"
+      - "Authorization"
+      - "X-API-Key"
+
+# Player dashboard default language: zh_CN (Simplified Chinese), zh_TW (Traditional Chinese), en_US (English)
+# After modification, run /ab reload to take effect
+web:
+  language: "en_US"
+
+# Real-time push service configuration (WebSocket & SSE)
+push:
+  # Enable WebSocket real-time broadcast (endpoint: ws://<ip>:<port>/ws/auctions)
+  websocket-enabled: true
+  # Enable Server-Sent Events (endpoint: http://<ip>:<port>/api/v1/stream)
+  sse-enabled: true
+  # WebSocket heartbeat keepalive interval (seconds)
+  heartbeat-interval-seconds: 25
+
+# AuctionHouse data source configuration (read-only mode; writing is forbidden to prevent dirty reads and race conditions)
+database:
+  # Database type: MYSQL, MARIADB, SQLITE
+  type: "SQLITE"
+  
+  # MySQL / MariaDB connection configuration
+  mysql:
+    host: "127.0.0.1"
+    port: 3306
+    database: "minecraft"
+    username: ""
+    password: ""
+    # Connection pool configuration
+    pool:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout-ms: 10000
+      idle-timeout-ms: 300000
+      max-lifetime-ms: 1800000
+  
+  # SQLite local file configuration (if using SQLite mode)
+  sqlite:
+    # You can enter an absolute path, or a path relative to the plugins/ directory
+    # Example: "AuctionHouse/auctionhouse.db" or "D:/minecraft/plugins/AuctionHouse/auctionhouse.db"
+    file-path: "AuctionHouse/auctions.db"
+
+  # AuctionHouse table name (to adapt to different branch plugin table names; default 'auctions' or 'auction_house')
+  table-name: "listings"
+
+# Fallback and event compensation configuration
+# When the third-party AuctionHouse plugin does not trigger the standard Bukkit event, or when the version changes, enable a dual safeguard mechanism
+fallback:
+  # Periodically scan database changes (incremental comparison)
+  periodic-scan:
+    enabled: true
+    # Scan interval (seconds, recommended 2~5 seconds)
+    interval-seconds: 3
+    # Maximum number of recently updated records to retrieve per batch
+    batch-size: 50
+  
+  # Listen for Vault economy flow to infer transaction events (can serve as an additional verification)
+  vault-audit:
+    enabled: true
+  
+  # Listen for auction-related player commands (such as /ah sell, /ah buy)
+  command-audit:
+    enabled: true
+
+# Log output level: DEBUG, INFO, WARN, ERROR
+log-level: "INFO"

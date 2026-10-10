@@ -1,0 +1,21 @@
+name: AuctionBridge
+version: '${project.version}'
+main: net.minecraftforge.auctionbridge.AuctionBridgePlugin
+api-version: '1.16'
+author: AuctionBridgeTeam
+description: High-performance read-only Web Gateway and real-time WebSocket stream for Minecraft AuctionHouse
+softdepend:
+  - HahaWebPlugin
+  - Vault
+  - AuctionHouse
+  - akAuctionHouse
+  - UltimateAuction
+permissions:
+  auctionbridge.admin:
+    description: Allows administrative commands such as reload and status check
+    default: op
+commands:
+  auctionbridge:
+    description: AuctionBridge control commands
+    permission: auctionbridge.admin
+    aliases: [ab, ahbridge]

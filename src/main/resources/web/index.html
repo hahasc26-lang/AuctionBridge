@@ -1,0 +1,1083 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101216">
+  <title data-i18n="pageTitle">AuctionBridge — 市场监控</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      color-scheme: dark;
+      --canvas: #101216;
+      --panel: #171a20;
+      --panel-raised: #1c2028;
+      --line: #292e37;
+      --muted: #858d9b;
+      --text: #e6e9ef;
+      --green: #78c99a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-width: 360px;
+      background: var(--canvas);
+      color: var(--text);
+      font: 13px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button, input, select { font: inherit; }
+    button { cursor: pointer; }
+    .mono, .number { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
+    .panel { background: var(--panel); border: 1px solid var(--line); }
+    .muted { color: var(--muted); }
+    .topbar { border-bottom: 1px solid var(--line); background: #13161b; }
+    .stat-card { min-height: 90px; }
+    .stat-value { font-size: 22px; line-height: 1.1; letter-spacing: -.035em; }
+    .control {
+      height: 34px; border: 1px solid var(--line); border-radius: 4px;
+      background: #13161b; color: var(--text); outline: none;
+    }
+    .control:focus { border-color: #687384; }
+    .table-head { color: #8d96a5; background: #14171c; }
+    .auction-row { border-top: 1px solid #242932; transition: background .15s ease, opacity .2s ease; }
+    .auction-row:hover { background: #1d222a; }
+    .auction-row[data-auction-status="ACTIVE"] { cursor: pointer; }
+    .auction-row[data-auction-status="ACTIVE"]:hover { background: #1d222a99; }
+    .auction-row.enter { animation: row-in .28s ease-out both; }
+    .auction-row.exit { opacity: 0; transform: translateX(10px); }
+    @keyframes row-in { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+    .item-icon {
+      width: 38px; height: 38px; flex: 0 0 38px; display: grid; place-items: center;
+      border: 1px solid #343a44; border-radius: 4px; background: #111419;
+    }
+    .item-icon img { image-rendering: pixelated; width: 30px; height: 30px; object-fit: contain; }
+    .item-icon-fallback { color: #9ba5b3; font: 10px ui-monospace, monospace; text-transform: uppercase; }
+    .copy-buy-hint { display: inline-flex; color: #78c99a; opacity: 0; transition: opacity .15s ease; }
+    .auction-row[data-auction-status="ACTIVE"]:hover .copy-buy-hint,
+    .auction-row[data-auction-status="ACTIVE"]:focus-within .copy-buy-hint { opacity: .9; }
+    .copy-buy-hint svg { width: 13px; height: 13px; }
+    .toast-container {
+      position: fixed; z-index: 100; left: 50%; bottom: 24px; display: flex; width: min(420px, calc(100vw - 32px));
+      flex-direction: column; gap: 8px; transform: translateX(-50%); pointer-events: none;
+    }
+    .copy-toast {
+      display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px;
+      border: 1px solid #3b4654; border-radius: 6px; background: #1f242e;
+      box-shadow: 0 10px 30px #0008; opacity: 0; transform: translateY(8px);
+      transition: opacity .22s ease, transform .22s ease;
+    }
+    .copy-toast.visible { opacity: 1; transform: translateY(0); }
+    .copy-toast.leaving { opacity: 0; transform: translateY(6px); }
+    .copy-toast-icon { flex: 0 0 auto; color: #78c99a; }
+    .copy-toast-icon svg { display: block; width: 18px; height: 18px; }
+    .copy-toast-title { color: #e6e9ef; font-weight: 600; overflow-wrap: anywhere; }
+    .copy-toast-description { margin-top: 2px; color: #929baa; font-size: 11px; }
+    .avatar { width: 23px; height: 23px; border-radius: 3px; background: #303641; image-rendering: pixelated; }
+    .seller-fallback { width: 23px; height: 23px; display: grid; place-items: center; border-radius: 3px; color: #cbd1da; background: #303641; font-size: 10px; }
+    .pill { border: 1px solid #343a44; background: #20242c; color: #adb5c2; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: #6b7280; }
+    .dot.live { background: #65c98b; box-shadow: 0 0 0 3px #65c98b1c; }
+    .dot.connecting { background: #d9a85d; }
+    .activity-item { border-top: 1px solid #262b34; }
+    .event-mark { width: 7px; height: 7px; margin-top: 5px; flex: 0 0 7px; border-radius: 50%; }
+    .tooltip {
+      position: fixed; z-index: 50; width: min(290px, calc(100vw - 24px)); padding: 11px 12px;
+      border: 1px solid #414957; border-radius: 3px; background: #0b0d11;
+      box-shadow: 0 8px 28px #0009; pointer-events: none; opacity: 0; transform: translateY(4px);
+      transition: opacity .12s ease, transform .12s ease;
+    }
+    .tooltip.visible { opacity: 1; transform: translateY(0); }
+    .tooltip-title { font-weight: 650; margin-bottom: 5px; }
+    .tooltip-lore { color: #aaa; font-size: 11px; line-height: 1.55; }
+    .lore-blue { color: #55ffff; } .lore-green { color: #55ff55; } .lore-gold { color: #ffaa00; }
+    .lore-red { color: #ff5555; } .lore-purple { color: #aa00aa; } .lore-yellow { color: #ffff55; }
+    .lore-gray { color: #aaaaaa; } .lore-white { color: #fff; } .lore-aqua { color: #55ffff; }
+    .lore-dark-red { color: #aa0000; } .lore-dark-green { color: #00aa00; }
+    .lore-dark-blue { color: #0000aa; } .lore-dark-aqua { color: #00aaaa; }
+    .lore-dark-purple { color: #aa00aa; } .lore-dark-gray { color: #555; }
+    .lore-black { color: #000; } .lore-bold { font-weight: 700; }
+    .lore-italic { font-style: italic; }
+    .scroll-area { max-height: 620px; overflow: auto; }
+    .scroll-area::-webkit-scrollbar { width: 6px; }
+    .scroll-area::-webkit-scrollbar-thumb { background: #343a44; border-radius: 4px; }
+    .empty { min-height: 210px; display: grid; place-items: center; color: var(--muted); }
+    .settings-panel { display: none; }
+    .settings-panel.open { display: block; }
+    @media (max-width: 960px) {
+      .workspace { grid-template-columns: minmax(0, 1fr) !important; }
+      .activity-panel { min-height: 260px; }
+      .scroll-area { max-height: 520px; }
+    }
+    @media (max-width: 620px) {
+      .wide-only { display: none !important; }
+      .seller-column { display: none !important; }
+      .mobile-seller { display: block !important; }
+      .stat-value { font-size: 18px; }
+      .stat-card { min-height: 78px; }
+      .item-icon { width: 32px; height: 32px; flex-basis: 32px; }
+      .item-icon img { width: 26px; height: 26px; }
+      .table-cell { padding-left: 8px !important; padding-right: 8px !important; }
+      table { table-layout: fixed; }
+      .auction-item-column { width: 56%; }
+      .auction-price-column { width: 26%; }
+      #wsLabel { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="mx-auto flex h-14 max-w-[1440px] items-center justify-between px-4 sm:px-6">
+      <div class="flex items-center gap-3">
+        <div class="grid h-7 w-7 place-items-center rounded-[3px] border border-[#4b594f] bg-[#202a23] text-[#8bd0a2]" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m4 8 4-4 4 4-4 4-4-4Zm8 8 4-4 4 4-4 4-4-4Z"/><path d="m12 8 4 4M8 12l4 4"/></svg>
+        </div>
+        <div class="font-semibold tracking-[.01em]">AuctionBridge <span class="ml-1 text-xs font-normal text-[#858d9b]" data-i18n="monitoring">市场监控</span></div>
+      </div>
+      <div class="flex items-center gap-4">
+        <select id="languageSelect" class="control px-2 text-xs" aria-label="网页语言" data-i18n-aria-label="languageLabel">
+          <option value="zh_CN">简体中文</option>
+          <option value="zh_TW">繁體中文</option>
+          <option value="en_US">English</option>
+        </select>
+        <div class="flex items-center gap-2 text-xs text-[#a7afbc]" title="WebSocket 实时事件连接" data-i18n-title="websocketTitle">
+          <span id="wsDot" class="dot connecting"></span><span id="wsLabel" data-i18n="connecting">正在连接</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-[1440px] px-4 pb-8 pt-5 sm:px-6">
+    <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <div class="mb-1 flex items-center gap-2">
+          <h1 class="text-lg font-semibold tracking-tight" data-i18n="marketTitle">全服拍卖市场</h1>
+        </div>
+        <p class="text-xs text-[#858d9b]" data-i18n="marketSubtitle">在售列表与市场事件实时监控</p>
+      </div>
+      <div class="flex items-center gap-2 text-xs text-[#858d9b]">
+        <span data-i18n="lastUpdated">上次更新</span><span id="lastUpdated" class="mono text-[#b8c0cc]" data-i18n="waitingData">等待数据</span>
+        <button id="refreshButton" class="ml-1 grid h-8 w-8 place-items-center rounded-[3px] border border-[#343a44] text-[#aeb6c2] hover:bg-[#20242c]" title="立即刷新" aria-label="立即刷新" data-i18n-title="refresh" data-i18n-aria-label="refresh">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9A7 7 0 0 1 18 6l2 2M4 16l2 2a7 7 0 0 0 12.4-3"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <section class="mb-4 grid grid-cols-2 gap-2.5 lg:grid-cols-5" aria-label="市场概览" data-i18n-aria-label="marketOverview">
+      <article class="panel stat-card rounded-[4px] px-3.5 py-3">
+        <div class="mb-2 flex items-center justify-between text-xs text-[#929aa7]"><span data-i18n="activeListings">当前在售</span><span class="text-[#7f8997]">ACTIVE</span></div>
+        <div id="activeStat" class="stat-value number font-semibold">—</div>
+      </article>
+      <article class="panel stat-card rounded-[4px] px-3.5 py-3">
+        <div class="mb-2 flex items-center justify-between text-xs text-[#929aa7]"><span data-i18n="totalRecords">数据库记录</span><span class="text-[#7f8997]" data-i18n="allRecords">ALL</span></div>
+        <div id="totalStat" class="stat-value number font-semibold">—</div>
+      </article>
+      <article class="panel stat-card rounded-[4px] px-3.5 py-3">
+        <div class="mb-2 flex items-center justify-between text-xs text-[#929aa7]"><span data-i18n="soldRecords">已成交记录</span><span class="text-[#7f8997]">SOLD</span></div>
+        <div id="soldStat" class="stat-value number font-semibold">—</div>
+      </article>
+      <article class="panel stat-card rounded-[4px] px-3.5 py-3">
+        <div class="mb-2 flex items-center justify-between text-xs text-[#929aa7]"><span data-i18n="allTimeVolume">累计成交额</span><span class="text-[#7f8997]" data-i18n="allTime">ALL TIME</span></div>
+        <div id="allVolumeStat" class="stat-value number font-semibold">—</div>
+      </article>
+      <article class="panel stat-card rounded-[4px] px-3.5 py-3">
+        <div class="mb-2 flex items-center justify-between text-xs text-[#929aa7]"><span data-i18n="currency">市场币种</span><span id="economyState" class="text-[#7f8997]" data-i18n="vault">VAULT</span></div>
+        <div id="currencyStat" class="stat-value font-semibold">—</div>
+      </article>
+    </section>
+
+    <p id="connectionMessage" class="mb-3 min-h-4 text-[11px] text-[#858d9b]" role="status" aria-live="polite"></p>
+
+    <div class="workspace grid grid-cols-[minmax(0,1fr)_320px] items-start gap-3">
+      <section class="panel min-w-0 overflow-hidden rounded-[4px]" aria-label="拍卖历史" data-i18n-aria-label="auctionHistory">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-[#292e37] px-3.5 py-3">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-semibold" data-i18n="auctionHall">拍卖大厅</h2>
+            <span id="resultCount" class="rounded-[3px] bg-[#252a33] px-1.5 py-0.5 mono text-[10px] text-[#aeb6c2]">0</span>
+          </div>
+          <div class="flex flex-1 flex-wrap justify-end gap-2">
+            <label class="relative">
+              <svg class="absolute left-2.5 top-[9px] text-[#737c89]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+              <input id="searchInput" class="control w-[190px] max-w-[48vw] pl-8 pr-2.5 text-xs" type="search" placeholder="搜索物品名称…" data-i18n-placeholder="searchPlaceholder">
+            </label>
+            <select id="statusSelect" class="control px-2 text-xs" aria-label="拍卖状态" data-i18n-aria-label="statusLabel">
+              <option value="ALL" data-i18n="statusAll">所有状态</option>
+              <option value="ACTIVE" data-i18n="statusActive">在售</option>
+              <option value="SOLD" data-i18n="statusSold">已成交</option>
+              <option value="CANCELLED" data-i18n="statusCancelled">已取消</option>
+              <option value="EXPIRED" data-i18n="statusExpired">已过期</option>
+            </select>
+            <select id="sortSelect" class="control px-2 text-xs" aria-label="排序方式" data-i18n-aria-label="sortLabel">
+              <option value="newest" data-i18n="newest">最新上架</option>
+              <option value="price_asc" data-i18n="priceAscending">价格从低到高</option>
+              <option value="price_desc" data-i18n="priceDescending">价格从高到低</option>
+            </select>
+          </div>
+        </div>
+        <div class="scroll-area">
+          <table class="w-full border-collapse text-left">
+            <thead class="table-head sticky top-0 z-10 text-[10px] uppercase tracking-wide">
+              <tr>
+                <th class="auction-item-column table-cell px-3.5 py-2 font-medium" data-i18n="item">物品</th>
+                <th class="seller-column table-cell px-3 py-2 font-medium" data-i18n="seller">卖家</th>
+                <th class="auction-price-column table-cell px-3 py-2 text-right font-medium" data-i18n="price">标价</th>
+                <th class="table-cell px-3 py-2 text-right font-medium" data-i18n="statusLabel">状态</th>
+                <th class="wide-only table-cell px-3.5 py-2 text-right font-medium" data-i18n="recordTime">日期 / 剩余时间</th>
+              </tr>
+            </thead>
+            <tbody id="auctionRows"></tbody>
+          </table>
+          <div id="emptyState" class="empty hidden">
+            <div class="text-center"><div class="mb-1 text-sm text-[#bbc2cd]" data-i18n="noMatchingAuctions">没有匹配的拍卖</div><div class="text-xs" data-i18n="adjustSearch">调整搜索条件，或稍后刷新</div></div>
+          </div>
+        </div>
+        <div class="flex flex-wrap items-center justify-between gap-2 border-t border-[#292e37] px-3.5 py-2 text-[10px] text-[#747d8b]">
+          <span id="listFooter" data-i18n="listFooter">显示数据库记录</span>
+          <div class="flex items-center gap-2">
+            <button id="previousPage" class="rounded border border-[#343a44] px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40" data-i18n="previousPage">上一页</button>
+            <span id="pageIndicator" class="mono"></span>
+            <button id="nextPage" class="rounded border border-[#343a44] px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40" data-i18n="nextPage">下一页</button>
+          </div>
+        </div>
+      </section>
+
+      <aside class="panel activity-panel overflow-hidden rounded-[4px]" aria-label="实时交易动态" data-i18n-aria-label="liveActivity">
+        <div class="flex items-center justify-between border-b border-[#292e37] px-3.5 py-3">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-semibold" data-i18n="liveActivity">实时交易动态</h2><span class="dot live"></span>
+          </div>
+          <span class="text-[10px] text-[#7f8997]" data-i18n="recentEvents">最近事件</span>
+        </div>
+        <div id="activityList" class="scroll-area px-3.5"></div>
+        <div id="activityEmpty" class="empty hidden min-h-[180px]">
+          <div class="text-center"><div class="mb-1 text-sm text-[#bbc2cd]" data-i18n="waitingEvents">等待市场事件</div><div class="text-xs" data-i18n="waitingEventsHint">新上架与成交会显示在这里</div></div>
+        </div>
+        <div id="activityFooter" class="border-t border-[#292e37] px-3.5 py-2 text-[10px] text-[#747d8b]" data-i18n="websocketFooter">通过 WebSocket 实时接收</div>
+      </aside>
+    </div>
+
+    <footer class="mt-4 flex flex-wrap items-center justify-between gap-2 text-[10px] text-[#66707e]">
+      <span>AuctionBridge <span id="pluginVersion" class="mono"></span> · <span data-i18n="readOnlyView">只读市场视图</span></span>
+      <span id="sourceNote" data-i18n="apiWebsocket">API 数据源 · WebSocket 实时推送</span>
+    </footer>
+  </main>
+  <div id="copyToastContainer" class="toast-container" aria-live="polite" aria-atomic="false"></div>
+  <div id="itemTooltip" class="tooltip" role="tooltip"></div>
+
+  <script>
+    (() => {
+      "use strict";
+      const DASHBOARD_REVISION = "2026-10-06-language-cookie";
+
+      const API = "/api/dashboard/v1";
+      const ACTIVITY_KEY = "auctionbridge.dashboard.activity";
+      const isLocalFile = window.location.protocol === "file:";
+      const $ = (id) => document.getElementById(id);
+      const supportedLanguages = ["zh_CN", "zh_TW", "en_US"];
+      const languageCookieName = "auctionbridge_language";
+      const getCookie = (name) => {
+        const prefix = `${encodeURIComponent(name)}=`;
+        const cookie = document.cookie.split("; ").find((entry) => entry.startsWith(prefix));
+        if (!cookie) return "";
+        try {
+          return decodeURIComponent(cookie.slice(prefix.length));
+        } catch (error) {
+          console.warn("Could not decode the saved dashboard language cookie.", error);
+          return "";
+        }
+      };
+      const requestedLanguage = new URLSearchParams(window.location.search).get("lang");
+      const savedLanguage = getCookie(languageCookieName);
+      const language = supportedLanguages.includes(requestedLanguage)
+        ? requestedLanguage
+        : supportedLanguages.includes(savedLanguage)
+          ? savedLanguage
+          : "en_US";
+      const numberLocale = { zh_CN: "zh-CN", zh_TW: "zh-TW", en_US: "en-US" }[language];
+      document.documentElement.lang = numberLocale;
+      const translations = {
+        zh_CN: {
+          languageLabel: "网页语言",
+          pageTitle: "AuctionBridge — 市场监控", monitoring: "市场监控", websocketTitle: "WebSocket 实时事件连接",
+          connecting: "正在连接", marketTitle: "全服拍卖市场", marketSubtitle: "从数据库浏览完整拍卖记录，并接收实时事件",
+          lastUpdated: "上次更新", waitingData: "等待数据", refresh: "立即刷新", marketOverview: "市场概览",
+          activeListings: "当前在售", totalRecords: "数据库记录", allRecords: "全部",
+          soldRecords: "已成交记录", allTimeVolume: "累计成交额", allTime: "累计",
+          currency: "市场币种", vault: "VAULT", auctionHistory: "拍卖历史", auctionHall: "拍卖记录",
+          searchPlaceholder: "搜索物品名称…", statusLabel: "状态", statusAll: "所有状态",
+          statusActive: "在售", statusSold: "已成交", statusCancelled: "已取消", statusExpired: "已过期",
+          sortLabel: "排序方式", newest: "最新记录", priceAscending: "价格从低到高", priceDescending: "价格从高到低",
+          item: "物品", seller: "卖家", buyer: "买家", price: "标价", recordTime: "日期 / 剩余时间",
+          noMatchingAuctions: "没有匹配的拍卖", adjustSearch: "调整搜索条件，或稍后刷新",
+          listFooter: "显示数据库记录", previousPage: "上一页", nextPage: "下一页",
+          listFooterCount: "显示第 {start}–{end} 条，共 {total} 条 · 每 15 秒同步",
+          pageIndicator: "第 {page} / {pages} 页",
+          liveActivity: "实时交易动态", recentEvents: "最近事件", waitingEvents: "等待市场事件",
+          waitingEventsHint: "新上架与成交会显示在这里", websocketFooter: "通过 WebSocket 实时接收",
+          readOnlyView: "只读市场视图", apiWebsocket: "API 数据源 · WebSocket 实时推送",
+          apiUnavailable: "数据库/API 暂不可用 · 未加载拍卖数据", pluginRequired: "需通过插件访问",
+          unknownItem: "未知物品", unknownPlayer: "未知玩家", unknown: "未知", fixedPrice: "固定价格",
+          perItemPrice: "单件", auctionId: "拍卖编号", sellerLabel: "卖家", priceLabel: "价格",
+          copyBuyHint: "点击复制游戏内搜索指令", buyCommandCopied: "已复制游戏内直达指令: {command}",
+          buyCommandHint: "切回游戏聊天框粘贴回车，即可直接打开该物品购买页面", buyCommandCopyFailed: "无法复制搜索指令",
+          eventListed: "新上架", eventPurchased: "已成交", eventCancelled: "已下架", eventExpired: "已过期",
+          marketEvent: "市场事件", justNow: "刚刚", minutesAgo: "{n} 分钟前", hoursAgo: "{n} 小时前",
+          daysAgo: "{n} 天前", expired: "已到期", dayUnit: "天", hourUnit: "时", minuteUnit: "分",
+          minutesUnit: "分", httpError: "HTTP {status} {statusText}{detail}",
+          missingData: "拍卖列表响应缺少 data 数组", requestFailed: "API 请求失败。请检查数据库连接和拍卖表配置。",
+          websocketUnsupported: "不支持 WebSocket", liveConnected: "实时连接", connectionError: "连接异常",
+          connectionClosed: "连接断开", connectionFailed: "连接失败",
+          unreadableWebsocket: "收到无法解析的 WebSocket 消息：{error}", websocketError: "无法建立 WebSocket：{error}",
+          serverInfoError: "服务器信息读取失败：{error}", storageWriteError: "无法保存本标签页的成交监测记录：{error}",
+          storageReadError: "无法读取本标签页的成交监测记录：{error}", serverInfoCurrencyDisabled: "未连接",
+          sourceLocalFile: "请通过 AuctionBridge 服务地址访问此页面",
+          activityWaitFooter: "连接 AuctionBridge 后接收实时事件",
+          detailSeparator: "：",
+          localFileMessage: "本地文件预览已停用。请先配置 AuctionBridge 数据库，再访问 http://服务器IP:端口/ 。"
+        },
+        zh_TW: {
+          languageLabel: "網頁語言",
+          pageTitle: "AuctionBridge — 市場監控", monitoring: "市場監控", websocketTitle: "WebSocket 即時事件連線",
+          connecting: "正在連線", marketTitle: "全服拍賣市場", marketSubtitle: "從資料庫瀏覽完整拍賣記錄，並接收即時事件",
+          lastUpdated: "上次更新", waitingData: "等待資料", refresh: "立即重新整理", marketOverview: "市場概覽",
+          activeListings: "目前在售", totalRecords: "資料庫記錄", allRecords: "全部",
+          soldRecords: "已成交記錄", allTimeVolume: "累計成交額", allTime: "累計",
+          currency: "市場貨幣", vault: "VAULT", auctionHistory: "拍賣歷史", auctionHall: "拍賣記錄",
+          searchPlaceholder: "搜尋物品名稱…", statusLabel: "狀態", statusAll: "所有狀態",
+          statusActive: "在售", statusSold: "已成交", statusCancelled: "已取消", statusExpired: "已過期",
+          sortLabel: "排序方式", newest: "最新記錄",
+          priceAscending: "價格由低至高", priceDescending: "價格由高至低",
+          item: "物品", seller: "賣家", buyer: "買家", price: "標價", recordTime: "日期 / 剩餘時間",
+          noMatchingAuctions: "沒有符合條件的拍賣", adjustSearch: "請調整搜尋條件，或稍後重新整理",
+          listFooter: "顯示資料庫記錄", previousPage: "上一頁", nextPage: "下一頁",
+          listFooterCount: "顯示第 {start}–{end} 筆，共 {total} 筆 · 每 15 秒同步",
+          pageIndicator: "第 {page} / {pages} 頁",
+          liveActivity: "即時交易動態", recentEvents: "最近事件", waitingEvents: "等待市場事件",
+          waitingEventsHint: "新上架與成交會顯示在這裡", websocketFooter: "透過 WebSocket 即時接收",
+          readOnlyView: "唯讀市場檢視", apiWebsocket: "API 資料來源 · WebSocket 即時推送",
+          apiUnavailable: "資料庫/API 暫時無法使用 · 未載入拍賣資料", pluginRequired: "請透過插件存取",
+          unknownItem: "未知物品", unknownPlayer: "未知玩家", unknown: "未知", fixedPrice: "固定價格",
+          perItemPrice: "單件", auctionId: "拍賣編號", sellerLabel: "賣家", priceLabel: "價格",
+          copyBuyHint: "點擊複製遊戲內搜尋指令", buyCommandCopied: "已複製遊戲內直達指令: {command}",
+          buyCommandHint: "切回遊戲聊天框貼上並按 Enter，即可直接開啟該物品購買頁面", buyCommandCopyFailed: "無法複製搜尋指令",
+          eventListed: "新上架", eventPurchased: "已成交", eventCancelled: "已下架", eventExpired: "已過期",
+          marketEvent: "市場事件", justNow: "剛剛", minutesAgo: "{n} 分鐘前", hoursAgo: "{n} 小時前",
+          daysAgo: "{n} 天前", expired: "已到期", dayUnit: "天", hourUnit: "小時", minuteUnit: "分鐘",
+          minutesUnit: "分鐘", httpError: "HTTP {status} {statusText}{detail}",
+          missingData: "拍賣清單回應缺少 data 陣列", requestFailed: "API 請求失敗。請檢查資料庫連線與拍賣資料表設定。",
+          websocketUnsupported: "不支援 WebSocket", liveConnected: "即時連線", connectionError: "連線異常",
+          connectionClosed: "連線中斷", connectionFailed: "連線失敗",
+          unreadableWebsocket: "收到無法解析的 WebSocket 訊息：{error}", websocketError: "無法建立 WebSocket：{error}",
+          serverInfoError: "讀取伺服器資訊失敗：{error}", storageWriteError: "無法儲存此分頁的成交監測記錄：{error}",
+          storageReadError: "無法讀取此分頁的成交監測記錄：{error}", serverInfoCurrencyDisabled: "未連線",
+          sourceLocalFile: "請透過 AuctionBridge 服務網址瀏覽此頁面",
+          activityWaitFooter: "連線至 AuctionBridge 後接收即時事件",
+          detailSeparator: "：",
+          localFileMessage: "已停用本機檔案預覽。請先設定 AuctionBridge 資料庫，再前往 http://伺服器IP:連接埠/ 。"
+        },
+        en_US: {
+          languageLabel: "Page language",
+          pageTitle: "AuctionBridge — Market Monitor", monitoring: "Market Monitor", websocketTitle: "Live WebSocket events",
+          connecting: "Connecting", marketTitle: "Server Auction Market", marketSubtitle: "Browse the complete database history and receive live events",
+          lastUpdated: "Last updated", waitingData: "Waiting for data", refresh: "Refresh now", marketOverview: "Market overview",
+          activeListings: "Active listings", totalRecords: "Database records", allRecords: "ALL",
+          soldRecords: "Sold records", allTimeVolume: "All-time sales volume", allTime: "ALL TIME",
+          currency: "Market currency", vault: "VAULT", auctionHistory: "Auction history", auctionHall: "Auction records",
+          searchPlaceholder: "Search item names…", statusLabel: "Status", statusAll: "All statuses",
+          statusActive: "Active", statusSold: "Sold", statusCancelled: "Cancelled", statusExpired: "Expired",
+          sortLabel: "Sort order", newest: "Newest first",
+          priceAscending: "Price: low to high", priceDescending: "Price: high to low",
+          item: "Item", seller: "Seller", buyer: "Buyer", price: "Price", recordTime: "Date / time left",
+          noMatchingAuctions: "No matching auctions", adjustSearch: "Adjust your search or refresh later",
+          listFooter: "Showing database records", previousPage: "Previous", nextPage: "Next",
+          listFooterCount: "Showing {start}–{end} of {total} records · Syncs every 15s",
+          pageIndicator: "Page {page} / {pages}",
+          liveActivity: "Live market activity", recentEvents: "Recent events", waitingEvents: "Waiting for market events",
+          waitingEventsHint: "New listings and sales will appear here", websocketFooter: "Live updates via WebSocket",
+          readOnlyView: "Read-only market view", apiWebsocket: "API data · Live WebSocket updates",
+          apiUnavailable: "Database/API unavailable · No auction data loaded", pluginRequired: "Open through plugin",
+          unknownItem: "Unknown item", unknownPlayer: "Unknown player", unknown: "Unknown", fixedPrice: "Fixed price",
+          perItemPrice: "Each", auctionId: "Auction ID", sellerLabel: "Seller", priceLabel: "Price",
+          copyBuyHint: "Click to copy in-game search command", buyCommandCopied: "Copied in-game shortcut: {command}",
+          buyCommandHint: "Paste it into game chat and press Enter to open this item's purchase screen", buyCommandCopyFailed: "Could not copy search command",
+          eventListed: "Listed", eventPurchased: "Sold", eventCancelled: "Cancelled", eventExpired: "Expired",
+          marketEvent: "Market event", justNow: "Just now", minutesAgo: "{n}m ago", hoursAgo: "{n}h ago",
+          daysAgo: "{n}d ago", expired: "Expired", dayUnit: "d", hourUnit: "h", minuteUnit: "m",
+          minutesUnit: "m", httpError: "HTTP {status} {statusText}{detail}",
+          missingData: "Auction list response is missing the data array",
+          requestFailed: "API request failed. Check the database connection and auction table configuration.",
+          websocketUnsupported: "WebSocket is not supported", liveConnected: "Live", connectionError: "Connection error",
+          connectionClosed: "Disconnected", connectionFailed: "Connection failed",
+          unreadableWebsocket: "Could not parse WebSocket message: {error}", websocketError: "Could not open WebSocket: {error}",
+          serverInfoError: "Could not load server information: {error}", storageWriteError: "Could not save this tab's observed sales: {error}",
+          storageReadError: "Could not read this tab's observed sales: {error}", serverInfoCurrencyDisabled: "Unavailable",
+          sourceLocalFile: "Open this page through the AuctionBridge server",
+          activityWaitFooter: "Connect to AuctionBridge to receive live events",
+          detailSeparator: ": ",
+          localFileMessage: "Local file preview is disabled. Configure the AuctionBridge database, then visit http://server-ip:port/."
+        }
+      };
+      const messages = translations[language];
+      const t = (key, values) => {
+        const message = messages[key] || key;
+        const replacements = values || {};
+        return message.replace(/\{([^{}]+)\}/g, (placeholder, name) =>
+          Object.prototype.hasOwnProperty.call(replacements, name)
+            ? String(replacements[name])
+            : placeholder
+        );
+      };
+      document.querySelectorAll("[data-i18n]").forEach((element) => {
+        element.textContent = t(element.dataset.i18n);
+      });
+      document.querySelectorAll("[data-i18n-title]").forEach((element) => {
+        element.title = t(element.dataset.i18nTitle);
+      });
+      document.querySelectorAll("[data-i18n-aria-label]").forEach((element) => {
+        element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel));
+      });
+      document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
+        element.setAttribute("placeholder", t(element.dataset.i18nPlaceholder));
+      });
+      $("languageSelect").value = language;
+      $("languageSelect").addEventListener("change", (event) => {
+        const nextLanguage = event.currentTarget.value;
+        if (!supportedLanguages.includes(nextLanguage)) return;
+        const secureCookie = window.location.protocol === "https:" ? "; Secure" : "";
+        document.cookie = `${encodeURIComponent(languageCookieName)}=${encodeURIComponent(nextLanguage)}; Max-Age=31536000; Path=/; SameSite=Lax${secureCookie}`;
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set("lang", nextLanguage);
+        window.location.assign(nextUrl.toString());
+      });
+      const currency = { symbol: "$" };
+      const state = {
+        auctions: new Map(),
+        activity: [],
+        stats: {},
+        socket: null,
+        reconnectTimer: null,
+        reconnectDelay: 1000,
+        refreshTimer: null,
+        refreshBusy: false,
+        refreshPending: false,
+        searchTimer: null,
+        socketRefreshTimer: null,
+        page: 1,
+        pageSize: 25,
+        totalCount: 0,
+        totalPages: 0
+      };
+
+      function escapeHtml(value) {
+        return String(value == null ? "" : value).replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+        })[char]);
+      }
+
+      function minecraftText(value) {
+        const codes = {
+          "0": "black", "1": "dark-blue", "2": "dark-green", "3": "dark-aqua",
+          "4": "dark-red", "5": "dark-purple", "6": "gold", "7": "gray",
+          "8": "dark-gray", "9": "blue", a: "green", b: "aqua", c: "red",
+          d: "purple", e: "yellow", f: "white", l: "bold", o: "italic"
+        };
+        const source = escapeHtml(value || "");
+        let output = "", active = [];
+        const tokens = source.split(/(§[0-9a-fk-or])/gi);
+        for (const token of tokens) {
+          const match = /^§([0-9a-fk-or])$/i.exec(token);
+          if (!match) { output += active.length ? `<span class="${active.join(" ")}">${token}</span>` : token; continue; }
+          const code = match[1].toLowerCase();
+          if (code === "r") active = [];
+          else if (codes[code]) {
+            if (/[0-9a-f]/.test(code)) active = [];
+            active.push("lore-" + codes[code]);
+          }
+        }
+        return output;
+      }
+
+      function uuidForAvatar(uuid) {
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid || "")
+          ? `https://crafatar.com/avatars/${encodeURIComponent(uuid)}?size=32&overlay`
+          : "";
+      }
+
+      const blockTextures = new Set([
+        "acacia_log", "acacia_planks", "andesite", "basalt", "birch_log", "birch_planks",
+        "blackstone", "bricks", "cobblestone", "crimson_stem", "dirt", "diorite",
+        "end_stone", "granite", "gravel", "jungle_log", "jungle_planks", "moss_block",
+        "mud", "netherrack", "oak_log", "oak_planks", "obsidian", "polished_andesite",
+        "polished_blackstone", "sand", "sandstone", "stone", "warped_stem"
+      ]);
+
+      function usesBlockTexture(name) {
+        return blockTextures.has(name)
+          || /_(?:log|wood|planks|ore|wool|terracotta|concrete|concrete_powder|leaves|sapling|slab|stairs|carpet)$/.test(name);
+      }
+
+      function materialPath(item) {
+        const name = String(item.material || item.itemType || "").toLowerCase()
+          .replace(/^minecraft:/, "").replace(/[^a-z0-9_]/g, "");
+        if (!name) return [];
+        const iconAliases = {
+          diamond_block: "diamond",
+          enchanted_golden_apple: "golden_apple",
+          beacon: "nether_star"
+        };
+        const textureName = iconAliases[name] || name;
+        const textureType = usesBlockTexture(textureName) ? "block" : "item";
+        const alternateType = textureType === "block" ? "item" : "block";
+        const baseUrl = "https://assets.mcasset.cloud/1.20.4/assets/minecraft/textures";
+        const encodedName = encodeURIComponent(textureName);
+        return [
+          `${baseUrl}/${textureType}/${encodedName}.png`,
+          `${baseUrl}/${alternateType}/${encodedName}.png`,
+          `https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.4/assets/minecraft/textures/${textureType}/${encodedName}.png`,
+          `https://raw.githubusercontent.com/InventivetalentDev/minecraft-assets/1.20.4/assets/minecraft/textures/${alternateType}/${encodedName}.png`
+        ];
+      }
+
+      function formattedPrice(price) {
+        const value = Number(price);
+        return Number.isFinite(value) ? value.toLocaleString(numberLocale, { maximumFractionDigits: 2 }) : "—";
+      }
+
+      function formattedCurrency(amount) {
+        const value = formattedPrice(amount);
+        const currencyName = String(currency.symbol || "").trim();
+        return /^[A-Za-z][A-Za-z -]*$/.test(currencyName)
+          ? `${value} ${currencyName}`
+          : `${currencyName}${value}`;
+      }
+
+      function remainingTime(expiresAt) {
+        const deadline = Number(expiresAt);
+        if (!Number.isFinite(deadline) || deadline <= 0) return "—";
+        const seconds = Math.max(0, Math.floor((deadline - Date.now()) / 1000));
+        if (!seconds) return t("expired");
+        const days = Math.floor(seconds / 86400);
+        const hours = Math.floor(seconds % 86400 / 3600);
+        const minutes = Math.floor(seconds % 3600 / 60);
+        if (days) return `${days}${t("dayUnit")} ${hours}${t("hourUnit")}`;
+        if (hours) return `${hours}${t("hourUnit")} ${minutes}${t("minuteUnit")}`;
+        return `${minutes}${t("minutesUnit")}`;
+      }
+
+      function auctionDate(item) {
+        const timestamp = Number(item.soldAt) || Number(item.createdAt);
+        if (!Number.isFinite(timestamp) || timestamp <= 0) return "—";
+        const milliseconds = timestamp < 1000000000000 ? timestamp * 1000 : timestamp;
+        const date = new Date(milliseconds);
+        return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString(numberLocale, { dateStyle: "short", timeStyle: "short" });
+      }
+
+      function rarityClass(item) {
+        const source = `${item.itemType || ""} ${item.displayName || ""}`.toLowerCase();
+        if (/netherite|elytra|beacon|dragon|enchanted|§5|§d/.test(source)) return "text-[#d4a5eb]";
+        if (/diamond|emerald|§b|§3/.test(source)) return "text-[#73c9d6]";
+        if (/gold|§6/.test(source)) return "text-[#e2bd7e]";
+        return "text-[#d8dce4]";
+      }
+
+      function safeLore(item) {
+        const lore = Array.isArray(item.lore) ? item.lore.slice(0, 8) : [];
+        if (!lore.length) lore.push(`§7${(item.material || item.itemType || t("unknownItem")).replace(/^minecraft:/i, "").replace(/_/g, " ")}`);
+        lore.push(`§8${t("auctionId")} #${item.id}`);
+        lore.push(`§7${t("sellerLabel")}${t("detailSeparator")}${item.sellerName || t("unknown")}`);
+        lore.push(`§7${t("priceLabel")}${t("detailSeparator")}${formattedCurrency(item.price)}`);
+        return lore;
+      }
+
+      function tooltipMarkup(item) {
+        const name = item.itemName || item.displayName || (item.material || item.itemType || t("unknownItem")).replace(/^minecraft:/i, "").replace(/_/g, " ");
+        return `<div class="tooltip-title ${rarityClass(item)}">${minecraftText(name)}${Number(item.amount) > 1 ? ` <span class="text-xs text-white">×${escapeHtml(item.amount)}</span>` : ""}</div>` +
+          `<div class="tooltip-lore">${safeLore(item).map((line) => `<div>${minecraftText(line)}</div>`).join("")}</div>`;
+      }
+
+      function searchNameForItem(item) {
+        const customName = item.itemName || item.displayName || "";
+        const plainCustomName = String(customName)
+          .replace(/§(?:[0-9a-fk-or]|x(?:§[0-9a-f]){6})/gi, "")
+          .replace(/[\u0000-\u001f\u007f]/g, " ")
+          .replace(/\s+/g, " ")
+          .trim();
+        if (plainCustomName) return plainCustomName;
+
+        const material = String(item.material || item.itemType || "")
+          .replace(/^minecraft:/i, "")
+          .replace(/_/g, " ")
+          .trim();
+        return material || "";
+      }
+
+      function translatedStatus(status) {
+        const keys = {
+          ACTIVE: "statusActive",
+          SOLD: "statusSold",
+          CANCELLED: "statusCancelled",
+          EXPIRED: "statusExpired"
+        };
+        const key = keys[String(status || "").toUpperCase()];
+        return key ? t(key) : "—";
+      }
+
+      function renderAuctions(animateId) {
+        const items = [...state.auctions.values()];
+        $("resultCount").textContent = Number(state.totalCount).toLocaleString(numberLocale);
+        $("emptyState").classList.toggle("hidden", items.length > 0);
+        $("auctionRows").innerHTML = items.map((item) => {
+          const id = escapeHtml(item.id);
+          const material = item.material || item.itemType || "";
+          const name = item.itemName || item.displayName || (material || t("unknownItem")).replace(/^minecraft:/i, "").replace(/_/g, " ");
+          const avatarUrl = uuidForAvatar(item.sellerUuid);
+          const iconFallback = escapeHtml((material || "?").replace(/^minecraft:/i, "").slice(0, 2));
+          const iconSources = materialPath(item);
+          const iconSourcesAttribute = escapeHtml(JSON.stringify(iconSources));
+          const status = String(item.status || "").toUpperCase();
+          const statusColor = status === "ACTIVE" ? "text-[#78c99a]" : status === "SOLD" ? "text-[#e2bd7e]" : "text-[#9ba5b3]";
+          const recordTime = status === "ACTIVE" ? remainingTime(item.expiresAt) : auctionDate(item);
+          return `<tr class="auction-row ${String(item.id) === String(animateId) ? "enter" : ""}" data-tooltip-id="${id}" data-auction-status="${escapeHtml(status)}">
+            <td class="table-cell px-3.5 py-2.5">
+              <div class="flex min-w-0 items-center gap-2.5">
+                <div class="item-icon"><img src="${iconSources[0] || ""}" alt="" loading="lazy" data-fallback="${iconFallback}" data-icon-sources="${iconSourcesAttribute}" data-icon-attempt="0"></div>
+                <div class="min-w-0">
+                  <div class="flex min-w-0 items-center gap-1.5"><span class="truncate font-medium ${rarityClass(item)}">${minecraftText(name)}${Number(item.amount) > 1 ? ` <span class="text-[10px] text-[#8992a0]">×${escapeHtml(item.amount)}</span>` : ""}</span>${status === "ACTIVE" ? `<span class="copy-buy-hint" title="${escapeHtml(t("copyBuyHint"))}" aria-label="${escapeHtml(t("copyBuyHint"))}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/></svg></span>` : ""}</div>
+                  <div class="mt-0.5 truncate mono text-[10px] text-[#737c89]">#${id} · ${escapeHtml(material.replace(/^minecraft:/i, ""))}</div>
+                  <div class="mobile-seller mt-0.5 hidden truncate text-[10px] text-[#8992a0]">${escapeHtml(item.sellerName || t("unknownPlayer"))}${status === "SOLD" && item.buyerName ? ` · ${escapeHtml(t("buyer"))}: ${escapeHtml(item.buyerName)}` : ""}</div>
+                  <div class="mobile-seller hidden truncate text-[10px] text-[#737c89]">${escapeHtml(recordTime)}</div>
+                </div>
+              </div>
+            </td>
+            <td class="seller-column table-cell px-3 py-2.5">
+              <div class="flex items-center gap-2">
+                ${avatarUrl ? `<img class="avatar" src="${avatarUrl}" alt="" loading="lazy" data-seller-fallback="${escapeHtml((item.sellerName || "?").slice(0, 1))}">` : `<span class="seller-fallback">${escapeHtml((item.sellerName || "?").slice(0, 1))}</span>`}
+                <div class="min-w-0">
+                  <span class="block max-w-[90px] truncate text-xs text-[#bdc4ce]">${escapeHtml(item.sellerName || t("unknownPlayer"))}</span>
+                  ${status === "SOLD" && item.buyerName ? `<span class="block max-w-[90px] truncate text-[10px] text-[#7e8795]">${escapeHtml(t("buyer"))}: ${escapeHtml(item.buyerName)}</span>` : ""}
+                </div>
+              </div>
+            </td>
+            <td class="table-cell px-3 py-2.5 text-right">
+              <div class="number whitespace-nowrap font-semibold text-[#e3c481]">${escapeHtml(formattedCurrency(item.price))}</div>
+              <div class="mt-0.5 text-[10px] text-[#7e8795]">${Number(item.amount) > 1 ? `${escapeHtml(t("perItemPrice"))} ${escapeHtml(formattedCurrency(Number(item.price) / Number(item.amount)))}` : escapeHtml(t("fixedPrice"))}</div>
+            </td>
+            <td class="table-cell px-3 py-2.5 text-right text-[10px] font-medium ${statusColor}">${escapeHtml(translatedStatus(status))}</td>
+            <td class="wide-only table-cell px-3.5 py-2.5 text-right">
+              <span class="mono text-xs text-[#aeb6c2]" ${status === "ACTIVE" ? `data-expiry="${escapeHtml(item.expiresAt)}"` : ""}>${escapeHtml(recordTime)}</span>
+            </td>
+          </tr>`;
+        }).join("");
+        const start = state.totalCount === 0 ? 0 : (state.page - 1) * state.pageSize + 1;
+        const end = Math.min(state.page * state.pageSize, state.totalCount);
+        $("listFooter").textContent = t("listFooterCount", { start, end, total: Number(state.totalCount).toLocaleString(numberLocale) });
+        $("pageIndicator").textContent = t("pageIndicator", {
+          page: state.totalPages === 0 ? 0 : state.page,
+          pages: state.totalPages
+        });
+        $("previousPage").disabled = state.page <= 1;
+        $("nextPage").disabled = state.totalPages === 0 || state.page >= state.totalPages;
+      }
+
+      async function copyToClipboard(text) {
+        try {
+          const clipboard = navigator.clipboard;
+          if (clipboard && typeof clipboard.writeText === "function") {
+            await clipboard.writeText(text);
+            return true;
+          }
+        } catch (error) {
+          console.warn("Clipboard API copy failed; trying the legacy clipboard fallback.", error);
+        }
+
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.top = "0";
+        textarea.style.left = "-9999px";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        try {
+          textarea.focus();
+          textarea.select();
+          textarea.setSelectionRange(0, textarea.value.length);
+          return document.execCommand("copy");
+        } catch (error) {
+          console.warn("Legacy clipboard copy failed.", error);
+          return false;
+        } finally {
+          textarea.remove();
+        }
+      }
+
+      function showCopyToast(title, description, success) {
+        const toast = document.createElement("div");
+        toast.className = "copy-toast";
+        toast.setAttribute("role", "status");
+        const icon = document.createElement("span");
+        icon.className = "copy-toast-icon";
+        icon.innerHTML = success
+          ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>'
+          : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5m0 3h.01"/></svg>';
+        const content = document.createElement("div");
+        content.className = "min-w-0";
+        const titleElement = document.createElement("div");
+        titleElement.className = "copy-toast-title";
+        titleElement.textContent = title;
+        content.appendChild(titleElement);
+        if (description) {
+          const descriptionElement = document.createElement("div");
+          descriptionElement.className = "copy-toast-description";
+          descriptionElement.textContent = description;
+          content.appendChild(descriptionElement);
+        }
+        toast.append(icon, content);
+        $("copyToastContainer").appendChild(toast);
+        requestAnimationFrame(() => toast.classList.add("visible"));
+        setTimeout(() => {
+          toast.classList.remove("visible");
+          toast.classList.add("leaving");
+          setTimeout(() => toast.remove(), 250);
+        }, 2500);
+      }
+
+      function normalizeActivity(event) {
+        const item = event && event.item ? event.item : {};
+        const type = String(event && event.event || event && event.type || "").toUpperCase();
+        if (!["ITEM_LISTED", "ITEM_PURCHASED", "ITEM_CANCELLED", "ITEM_EXPIRED"].includes(type)) return null;
+        return {
+          event: type,
+          id: String(item.id == null ? "" : item.id),
+          item,
+          timestamp: Number(event.timestamp) || Date.now()
+        };
+      }
+
+      function rememberActivity(entry) {
+        const now = Date.now();
+        state.activity = [entry, ...state.activity.filter((old) => !(old.event === entry.event && old.id === entry.id))]
+          .filter((old) => old.timestamp > now - 86400000).slice(0, 40);
+        try { sessionStorage.setItem(ACTIVITY_KEY, JSON.stringify(state.activity)); } catch (error) {
+          $("connectionMessage").textContent = t("storageWriteError", { error: error.message });
+        }
+      }
+
+      function eventDescription(entry) {
+        const item = entry.item || {};
+        const name = item.displayName || (item.itemType || t("unknownItem")).replace(/^minecraft:/i, "").replace(/_/g, " ");
+        const labels = {
+          ITEM_LISTED: [t("eventListed"), "#7fc997"],
+          ITEM_PURCHASED: [t("eventPurchased"), "#e2bd7e"],
+          ITEM_CANCELLED: [t("eventCancelled"), "#9ba5b3"],
+          ITEM_EXPIRED: [t("eventExpired"), "#9ba5b3"]
+        };
+        return { label: labels[entry.event] || [t("marketEvent"), "#9ba5b3"], name };
+      }
+
+      function timeAgo(timestamp) {
+        const seconds = Math.max(0, Math.floor((Date.now() - Number(timestamp)) / 1000));
+        if (seconds < 60) return t("justNow");
+        if (seconds < 3600) return t("minutesAgo", { n: Math.floor(seconds / 60) });
+        if (seconds < 86400) return t("hoursAgo", { n: Math.floor(seconds / 3600) });
+        return t("daysAgo", { n: Math.floor(seconds / 86400) });
+      }
+
+      function renderActivity() {
+        const entries = state.activity.filter((entry) => entry.timestamp > Date.now() - 86400000).slice(0, 30);
+        $("activityEmpty").classList.toggle("hidden", entries.length > 0);
+        $("activityList").classList.toggle("hidden", entries.length === 0);
+        $("activityList").innerHTML = entries.map((entry) => {
+          const { label, name } = eventDescription(entry);
+          const item = entry.item || {};
+          const price = Number(item.price);
+          return `<div class="activity-item flex gap-2.5 py-3">
+            <span class="event-mark" style="background:${label[1]}"></span>
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-[10px] font-semibold" style="color:${label[1]}">${escapeHtml(label[0])}</span>
+                <time class="shrink-0 text-[10px] text-[#727c89]">${timeAgo(entry.timestamp)}</time>
+              </div>
+              <div class="mt-1 truncate text-xs text-[#cbd1da]">${minecraftText(name)}</div>
+              <div class="mt-1 flex items-center justify-between gap-2 text-[10px] text-[#7e8795]">
+                <span class="truncate">${escapeHtml(item.sellerName || t("unknownPlayer"))} · #${escapeHtml(item.id || entry.id || "—")}</span>
+                ${Number.isFinite(price) ? `<span class="number shrink-0 text-[#c8b17d]">${escapeHtml(formattedCurrency(price))}</span>` : ""}
+              </div>
+            </div>
+          </div>`;
+        }).join("");
+      }
+
+      function updateStats() {
+        const active = Number(state.stats.activeCount);
+        $("activeStat").textContent = Number.isFinite(active) ? active.toLocaleString(numberLocale) : "—";
+        const total = Number(state.stats.totalCount);
+        $("totalStat").textContent = Number.isFinite(total) ? total.toLocaleString(numberLocale) : "—";
+        const sold = Number(state.stats.soldCount);
+        $("soldStat").textContent = Number.isFinite(sold) ? sold.toLocaleString(numberLocale) : "—";
+        $("allVolumeStat").textContent = state.stats.totalVolume == null
+          ? "—" : formattedCurrency(state.stats.totalVolume);
+        $("currencyStat").textContent = currency.symbol || "—";
+      }
+
+      function setSocketStatus(status, label) {
+        $("wsDot").className = `dot ${status}`;
+        $("wsLabel").textContent = label;
+      }
+
+      async function fetchJson(path) {
+        const response = await fetch(`${API}${path}`, { cache: "no-store" });
+        if (!response.ok) {
+          const errorBody = await response.text();
+          let detail = "";
+          try {
+            const payload = JSON.parse(errorBody);
+            if (payload.error) detail = `${t("detailSeparator")}${payload.error}`;
+          } catch (error) {
+            if (errorBody) detail = `${t("detailSeparator")}${errorBody}`;
+          }
+          throw new Error(t("httpError", { status: response.status, statusText: response.statusText, detail }));
+        }
+        return response.json();
+      }
+
+      async function refreshData() {
+        if (isLocalFile) return;
+        if (state.refreshBusy) {
+          state.refreshPending = true;
+          return;
+        }
+        state.refreshBusy = true;
+        try {
+          const params = new URLSearchParams({
+            status: $("statusSelect").value,
+            search: $("searchInput").value.trim(),
+            sort: $("sortSelect").value === "newest" ? "id_desc" : $("sortSelect").value,
+            page: String(state.page),
+            pageSize: String(state.pageSize)
+          });
+          const [list, stats] = await Promise.all([
+            fetchJson(`/auctions?${params.toString()}`),
+            fetchJson("/stats")
+          ]);
+          if (!list || !Array.isArray(list.data)) throw new Error(t("missingData"));
+          state.auctions = new Map(list.data.map((item) => [String(item.id), item]));
+          state.totalCount = Number(list.totalCount) || 0;
+          state.totalPages = Number(list.totalPages) || 0;
+          state.page = Number(list.page) || 1;
+          state.stats = stats || {};
+          $("lastUpdated").textContent = new Date().toLocaleTimeString(numberLocale, { hour12: false });
+          $("sourceNote").textContent = t("apiWebsocket");
+          $("connectionMessage").textContent = "";
+          renderAuctions();
+          updateStats();
+        } catch (error) {
+          $("connectionMessage").textContent = error.message || t("requestFailed");
+          $("sourceNote").textContent = t("apiUnavailable");
+          state.auctions.clear();
+          state.totalCount = 0;
+          state.totalPages = 0;
+          state.stats = {};
+          renderAuctions();
+          updateStats();
+        } finally {
+          state.refreshBusy = false;
+          if (state.refreshPending) {
+            state.refreshPending = false;
+            refreshData();
+          }
+        }
+      }
+
+      function connectSocket() {
+        if (isLocalFile) {
+          setSocketStatus("", t("pluginRequired"));
+          return;
+        }
+        if (!("WebSocket" in window)) {
+          setSocketStatus("", t("websocketUnsupported"));
+          return;
+        }
+        clearTimeout(state.reconnectTimer);
+        const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const url = `${scheme}//${window.location.host}/ws/dashboard/auctions`;
+        setSocketStatus("connecting", t("connecting"));
+        try {
+          const socket = new WebSocket(url);
+          state.socket = socket;
+          socket.onopen = () => {
+            state.reconnectDelay = 1000;
+            setSocketStatus("live", t("liveConnected"));
+          };
+          socket.onmessage = (message) => {
+            let payload;
+            try { payload = JSON.parse(message.data); }
+            catch (error) {
+              $("connectionMessage").textContent = t("unreadableWebsocket", { error: error.message });
+              return;
+            }
+            if (payload.type === "PING") { socket.send("PING"); return; }
+            if (payload.type === "CONNECTED" || payload.type === "PONG") return;
+            const event = normalizeActivity(payload);
+            if (!event) return;
+            rememberActivity(event);
+            renderActivity();
+            clearTimeout(state.socketRefreshTimer);
+            state.socketRefreshTimer = setTimeout(refreshData, 300);
+          };
+          socket.onerror = () => setSocketStatus("", t("connectionError"));
+          socket.onclose = (event) => {
+            if (state.socket !== socket) return;
+            state.socket = null;
+            setSocketStatus("", t("connectionClosed"));
+            const delay = state.reconnectDelay;
+            state.reconnectDelay = Math.min(state.reconnectDelay * 2, 30000);
+            state.reconnectTimer = setTimeout(connectSocket, delay);
+          };
+        } catch (error) {
+          $("connectionMessage").textContent = t("websocketError", { error: error.message });
+          setSocketStatus("", t("connectionFailed"));
+          state.reconnectTimer = setTimeout(connectSocket, state.reconnectDelay);
+          state.reconnectDelay = Math.min(state.reconnectDelay * 2, 30000);
+        }
+      }
+
+      async function loadServerInfo() {
+        if (isLocalFile) return;
+        try {
+          const info = await fetchJson("/info");
+          if (info.currencySymbol) currency.symbol = info.currencySymbol;
+          $("pluginVersion").textContent = info.version ? `v${escapeHtml(info.version)}` : "";
+          if (info.vaultEconomy === "DISABLED") $("economyState").textContent = t("serverInfoCurrencyDisabled");
+          updateStats();
+          renderAuctions();
+          renderActivity();
+        } catch (error) {
+          $("connectionMessage").textContent = t("serverInfoError", { error: error.message });
+        }
+      }
+
+      function restoreActivity() {
+        try {
+          const cached = JSON.parse(sessionStorage.getItem(ACTIVITY_KEY) || "[]");
+          if (Array.isArray(cached)) {
+            state.activity = cached.map(normalizeActivity).filter(Boolean)
+              .filter((entry) => entry.timestamp > Date.now() - 86400000).slice(0, 40);
+          }
+        } catch (error) {
+          $("connectionMessage").textContent = t("storageReadError", { error: error.message });
+        }
+      }
+
+      $("refreshButton").addEventListener("click", refreshData);
+      $("searchInput").addEventListener("input", () => {
+        clearTimeout(state.searchTimer);
+        state.searchTimer = setTimeout(() => {
+          state.page = 1;
+          refreshData();
+        }, 250);
+      });
+      $("statusSelect").addEventListener("change", () => {
+        state.page = 1;
+        refreshData();
+      });
+      $("sortSelect").addEventListener("change", () => {
+        state.page = 1;
+        refreshData();
+      });
+      $("previousPage").addEventListener("click", () => {
+        if (state.page <= 1) return;
+        state.page--;
+        refreshData();
+      });
+      $("nextPage").addEventListener("click", () => {
+        if (state.page >= state.totalPages) return;
+        state.page++;
+        refreshData();
+      });
+      $("auctionRows").addEventListener("click", async (event) => {
+        const row = event.target.closest("tr[data-tooltip-id]");
+        if (!row || row.dataset.auctionStatus !== "ACTIVE") return;
+        const item = state.auctions.get(row.dataset.tooltipId);
+        if (!item || String(item.status || "").toUpperCase() !== "ACTIVE") return;
+        const itemName = searchNameForItem(item);
+        if (!itemName) {
+          showCopyToast(t("buyCommandCopyFailed"), "", false);
+          return;
+        }
+
+        const command = `/ah search ${itemName}`;
+        const copied = await copyToClipboard(command);
+        showCopyToast(
+          copied ? t("buyCommandCopied", { command }) : t("buyCommandCopyFailed"),
+          copied ? t("buyCommandHint") : "",
+          copied
+        );
+      });
+
+      const tooltip = $("itemTooltip");
+      $("auctionRows").addEventListener("pointerover", (event) => {
+        const row = event.target.closest("tr[data-tooltip-id]");
+        if (!row) return;
+        const item = state.auctions.get(row.dataset.tooltipId);
+        if (!item) return;
+        tooltip.innerHTML = tooltipMarkup(item);
+        tooltip.classList.add("visible");
+        const rect = row.getBoundingClientRect();
+        const top = Math.max(8, Math.min(rect.top, window.innerHeight - 175));
+        const left = Math.max(8, Math.min(rect.right + 10, window.innerWidth - 305));
+        tooltip.style.top = `${top}px`;
+        tooltip.style.left = `${left}px`;
+      });
+      $("auctionRows").addEventListener("pointerout", (event) => {
+        if (event.target.closest("tr[data-tooltip-id]")) tooltip.classList.remove("visible");
+      });
+      $("auctionRows").addEventListener("error", (event) => {
+        const image = event.target;
+        if (!(image instanceof HTMLImageElement)) return;
+        if (image.dataset.sellerFallback != null) {
+          const fallback = document.createElement("span");
+          fallback.className = "seller-fallback";
+          fallback.textContent = image.dataset.sellerFallback;
+          image.replaceWith(fallback);
+        } else if (image.dataset.fallback != null) {
+          let sources = [];
+          try {
+            sources = JSON.parse(image.dataset.iconSources || "[]");
+          } catch (error) {
+            console.warn("Could not read item icon fallback URLs.", error);
+          }
+          const nextAttempt = Number(image.dataset.iconAttempt || 0) + 1;
+          if (nextAttempt < sources.length) {
+            image.dataset.iconAttempt = String(nextAttempt);
+            image.src = sources[nextAttempt];
+            return;
+          }
+          const fallback = document.createElement("span");
+          fallback.className = "item-icon-fallback";
+          fallback.textContent = image.dataset.fallback;
+          image.replaceWith(fallback);
+        }
+      }, true);
+
+      restoreActivity();
+      if (isLocalFile) {
+        $("sourceNote").textContent = t("sourceLocalFile");
+        $("connectionMessage").textContent = t("localFileMessage");
+        $("activityFooter").textContent = t("activityWaitFooter");
+        setSocketStatus("", t("pluginRequired"));
+      } else {
+        Promise.all([refreshData(), loadServerInfo()]);
+        connectSocket();
+        state.refreshTimer = setInterval(refreshData, 15000);
+      }
+      setInterval(() => {
+        document.querySelectorAll("[data-expiry]").forEach((element) => {
+          element.textContent = remainingTime(element.dataset.expiry);
+        });
+        renderActivity();
+        updateStats();
+      }, 30000);
+    })();
+  </script>
+</body>
+</html>
