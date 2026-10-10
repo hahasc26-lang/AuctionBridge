@@ -1,5 +1,3 @@
-# AuctionBridge
-
 <p align="center">
   <img src="https://img.shields.io/badge/Minecraft-1.16%2B-brightgreen?style=flat-square&logo=minecraft" alt="Minecraft Version">
   <img src="https://img.shields.io/badge/Java-17-orange?style=flat-square&logo=openjdk" alt="Java 17">
@@ -65,40 +63,42 @@ Regular `/api/v1/*` routes require `X-API-Key`, except `/health` and `/info`. Pu
 
 ## 中文
 
-AuctionBridge 是 Minecraft AuctionHouse 的只读 Web 网关，提供市场仪表盘、REST API、WebSocket 和 SSE。需要 Java 17+、Paper/Purpur/Spigot 1.16+、[HahaWebPlugin](https://modrinth.com/plugin/hahawebplugin) 及兼容的 SQLite/MySQL/MariaDB 数据库；Vault 与经济插件为可选。
+> Minecraft AuctionHouse 的只读 Web 网关，提供仪表盘、REST API、WebSocket 和 SSE。
 
 ### 功能特性
 
-- 仪表盘展示拍卖列表、统计和实时动态
-- 只读 REST API：拍卖、玩家物品、余额与服务状态
-- WebSocket 和 SSE 实时事件推送
-- 支持 SQLite、MySQL、MariaDB 和可选的 Vault 经济集成
-- 数据库轮询和命令审计补偿检测
+- 内嵌仪表盘，展示拍卖列表、统计信息和实时动态
+- 只读 REST API，提供拍卖、玩家在售列表、余额与服务健康状态
+- WebSocket 与 SSE 事件流
+- 支持 SQLite、MySQL 和 MariaDB；可选的 Vault 经济集成
+- 数据库轮询与命令审计兜底方案
+
+**环境要求：** Java 17+、Paper/Purpur/Spigot 1.16+、[HahaWebPlugin](https://modrinth.com/plugin/hahawebplugin)，以及兼容 AuctionHouse 的 SQLite/MySQL/MariaDB 数据库。Vault 与经济插件为可选。
 
 ### 安装
 
-安装 HahaWebPlugin（首次安装后重启一次），将 `AuctionBridge-x.x.x.jar` 放入 `plugins/` 并启动。编辑 `plugins/AuctionBridge/config.yml` 配置数据库，重启后访问 `http://<服务器IP>:8085/`。首次启动会生成 API Key；仪表盘无需密钥。
+安装 HahaWebPlugin（若为新安装需重启一次），将 `AuctionBridge-x.x.x.jar` 放入 `plugins/`，然后启动服务器。在 `plugins/AuctionBridge/config.yml` 中配置数据库，重启后访问 `http://<服务器IP>:8085/`。首次启动会生成 API Key；仪表盘无需该密钥。
 
 ### 数据库结构
 
-插件不会创建或迁移数据表。必需字段：`id`、`world`、`seller_uuid`、`buyer_uuid`、`bidder_uuid`、`price`、`reserve`、`bid`、`listing_type`、`item`。`buyer_uuid` 为空表示在售，非空表示已成交；搜索使用 `item`，卖家筛选使用 `seller_uuid`。无法区分已取消或已过期的拍卖。建议使用只读账号；SQLite 相对路径基于 `plugins/` 目录。
+AuctionBridge 不会创建或迁移数据表。必需字段：`id`、`world`、`seller_uuid`、`buyer_uuid`、`bidder_uuid`、`price`、`reserve`、`bid`、`listing_type`、`item`。`buyer_uuid` 为空表示在售，非空表示已成交。搜索使用 `item`，卖家筛选使用 `seller_uuid`。无法区分已取消与已过期的拍卖。在支持的环境中请使用只读数据库账号；SQLite 相对路径基于 `plugins/` 目录解析。
 
-### API 与实时推送
+### API 与事件流
 
-API 地址：`http://<服务器IP>:8085/api/v1`
+基地址：`http://<服务器IP>:8085/api/v1`
 
 | 接口 | 说明 |
 |---|---|
 | `GET /health`、`GET /info` | 公开的服务状态和服务器信息 |
-| `GET /auctions` | 搜索和分页查询拍卖 |
+| `GET /auctions` | 搜索并分页查询拍卖列表 |
 | `GET /auctions/{id}` | 查询单条拍卖 |
-| `GET /stats` | 拍卖和成交统计 |
-| `GET /players/{uuid}/balance` | 查询 Vault 余额 |
-| `GET /players/{uuid}/listings` | 查询玩家在售物品 |
+| `GET /stats` | 拍卖与成交统计 |
+| `GET /players/{uuid}/balance` | Vault 余额 |
+| `GET /players/{uuid}/listings` | 玩家在售物品 |
 
-`/auctions` 参数：`status`（`ACTIVE`、`SOLD`、`CANCELLED`、`EXPIRED`、`ALL`）、`search`、`minPrice`、`maxPrice`、`sellerUuid`、`sort`（`price_asc`、`price_desc`、`id_desc`）、`page`、`pageSize`（最大 100）。使用上述表结构时，已取消/过期筛选不会返回结果。
+`/auctions` 参数：`status`（`ACTIVE`、`SOLD`、`CANCELLED`、`EXPIRED`、`ALL`）、`search`、`minPrice`、`maxPrice`、`sellerUuid`、`sort`（`price_asc`、`price_desc`、`id_desc`）、`page`、`pageSize`（最大 100）。使用上述表结构时，已取消/已过期的筛选不会返回结果。
 
-常规 `/api/v1/*` 需要请求头 `X-API-Key`（`/health`、`/info` 除外）。公开仪表盘接口 `/api/dashboard/v1/*`、`/ws/dashboard/auctions` 无需密钥；可访问服务器的人都能查看市场数据。WebSocket：`/ws/auctions`（需鉴权）；SSE：`/api/v1/stream`（需鉴权）。
+常规 `/api/v1/*` 路由需要 `X-API-Key` 请求头，`/health` 与 `/info` 除外。公开仪表盘路由（`/api/dashboard/v1/*`、`/ws/dashboard/auctions`）无需密钥。WebSocket：`/ws/auctions`（需鉴权）；SSE：`/api/v1/stream`（需鉴权）。
 
 ### 命令与构建
 
