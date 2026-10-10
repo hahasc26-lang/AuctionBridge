@@ -2,6 +2,7 @@ net\minecraftforge\auctionbridge\database\DatabaseQueryException.class
 net\minecraftforge\auctionbridge\database\ItemSerializer.class
 net\minecraftforge\auctionbridge\events\fallback\DatabaseWatcherTask.class
 net\minecraftforge\auctionbridge\config\ServerLanguage.class
+net\minecraftforge\auctionbridge\events\AuctionBridgeEventBus$1.class
 net\minecraftforge\auctionbridge\web\filter\CorsFilter.class
 net\minecraftforge\auctionbridge\web\controller\PlayerController.class
 net\minecraftforge\auctionbridge\web\websocket\BridgeWebSocketHandler.class
@@ -10,6 +11,7 @@ net\minecraftforge\auctionbridge\events\fallback\CommandAndEconomyWatcher.class
 net\minecraftforge\auctionbridge\database\AuctionDatabaseService$CachedCount.class
 net\minecraftforge\auctionbridge\economy\VaultService.class
 net\minecraftforge\auctionbridge\events\AuctionBridgeEventBus.class
+net\minecraftforge\auctionbridge\database\AuctionDatabaseService$TrackedStatusResult.class
 net\minecraftforge\auctionbridge\database\ItemSerializer$ByteArrayKey.class
 net\minecraftforge\auctionbridge\database\ItemSerializer$1.class
 net\minecraftforge\auctionbridge\AuctionBridgePlugin.class
