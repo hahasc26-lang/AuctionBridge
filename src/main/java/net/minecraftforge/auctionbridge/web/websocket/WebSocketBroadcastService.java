@@ -39,17 +39,31 @@ public class WebSocketBroadcastService {
     }
 
     /**
+     * 线程安全地发送 WebSocket 消息，防止 Jetty 多线程并发写导致连接崩溃
+     */
+    private boolean safeSend(WsContext ctx, String message) {
+        if (ctx == null || ctx.session == null) {
+            return false;
+        }
+        try {
+            synchronized (ctx.session) {
+                if (ctx.session.isOpen()) {
+                    ctx.send(message);
+                    return true;
+                }
+            }
+        } catch (Exception e) {
+            plugin.getLogger().fine("WebSocket 发送异常: " + e.getMessage());
+        }
+        return false;
+    }
+
+    /**
      * 广播 JSON 事件字符串给所有在线的 WebSocket 客户端
      */
     public void broadcast(String message) {
         for (WsContext ctx : sessions) {
-            try {
-                if (ctx.session.isOpen()) {
-                    ctx.send(message);
-                } else {
-                    sessions.remove(ctx);
-                }
-            } catch (Exception e) {
+            if (!safeSend(ctx, message)) {
                 sessions.remove(ctx);
             }
         }
@@ -60,14 +74,9 @@ public class WebSocketBroadcastService {
         this.heartbeatTask = plugin.getServer().getScheduler().runTaskTimerAsynchronously(
             plugin,
             () -> {
+                String pingMessage = "{\"type\":\"PING\",\"time\":" + System.currentTimeMillis() + "}";
                 for (WsContext ctx : sessions) {
-                    try {
-                        if (ctx.session.isOpen()) {
-                            ctx.send("{\"type\":\"PING\",\"time\":" + System.currentTimeMillis() + "}");
-                        } else {
-                            sessions.remove(ctx);
-                        }
-                    } catch (Exception e) {
+                    if (!safeSend(ctx, pingMessage)) {
                         sessions.remove(ctx);
                     }
                 }

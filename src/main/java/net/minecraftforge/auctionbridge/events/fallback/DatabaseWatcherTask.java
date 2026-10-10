@@ -89,13 +89,23 @@ public class DatabaseWatcherTask implements Runnable {
                 }
             }
 
-            // B. 检测已在售物品的状态变动 (售出监控)
+            // B. 检测已在售物品的状态变动 (售出与下架物理删除监控)
             if (!trackedActiveIds.isEmpty()) {
-                List<AuctionItem> soldItems = databaseService.querySoldItemsFromIds(trackedActiveIds);
-                for (AuctionItem soldItem : soldItems) {
+                AuctionDatabaseService.TrackedStatusResult inspection = databaseService.inspectTrackedItems(trackedActiveIds);
+                // 1. 处理售出物品
+                for (AuctionItem soldItem : inspection.getSoldItems()) {
                     trackedActiveIds.remove(soldItem.getId());
                     eventBus.publish(AuctionBridgeEventBus.EventType.ITEM_PURCHASED, soldItem,
                             "Detected via DB status watcher (Sold ID: " + soldItem.getId() + ")");
+                }
+                // 2. 清理已被物理删除的物品（下架/过期），释放槽位避免幽灵泄漏
+                for (Long missingId : inspection.getMissingIds()) {
+                    trackedActiveIds.remove(missingId);
+                    AuctionItem placeholder = new AuctionItem();
+                    placeholder.setId(missingId);
+                    placeholder.setStatus("CANCELLED");
+                    eventBus.publish(AuctionBridgeEventBus.EventType.ITEM_CANCELLED, placeholder,
+                            "Detected via DB status watcher (Listing removed/cancelled from database ID: " + missingId + ")");
                 }
             }
         } catch (Exception e) {

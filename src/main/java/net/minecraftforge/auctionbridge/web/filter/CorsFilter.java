@@ -18,19 +18,21 @@ public class CorsFilter {
         javalinConfig.plugins.enableCors(cors -> {
             cors.add(rule -> {
                 List<String> origins = config.getCorsAllowedOrigins();
-                if (origins.contains("*")) {
+                boolean hasWildcard = origins == null || origins.isEmpty() || origins.contains("*");
+                if (hasWildcard) {
                     rule.anyHost();
+                    rule.allowCredentials = false;
                 } else {
                     for (String origin : origins) {
                         rule.allowHost(origin);
                     }
+                    rule.allowCredentials = true;
                 }
 
                 for (String header : config.getCorsAllowedHeaders()) {
                     rule.exposeHeader(header);
                 }
 
-                rule.allowCredentials = true;
                 rule.exposeHeader("X-Total-Count");
             });
         });

@@ -58,7 +58,7 @@ public class BridgeConfig {
         FileConfiguration config = plugin.getConfig();
 
         // Server
-        this.httpHost = config.getString("server.host", "0.0.0.0");
+        this.httpHost = config.getString("server.host", "127.0.0.1");
         this.httpPort = Math.max(1, config.getInt("server.port", 8085));
         this.apiKey = config.getString("server.api-key", "");
         if (this.apiKey == null || this.apiKey.trim().isEmpty()
@@ -79,12 +79,12 @@ public class BridgeConfig {
         } else {
             this.webLanguage = configuredLanguage.trim();
         }
-        String configuredServerLanguage = config.getString("server.language", "zh_CN");
+        String configuredServerLanguage = config.getString("server.language", "en_US");
         if (configuredServerLanguage == null || !List.of("zh_CN", "zh_TW", "en_US")
                 .contains(configuredServerLanguage.trim())) {
             plugin.getLogger().warning(localized("config.unsupportedServerLanguage",
-                    "不支持的 server.language: " + configuredServerLanguage + "，将使用 zh_CN。", configuredServerLanguage));
-            this.serverLanguage = "zh_CN";
+                    "不支持的 server.language: " + configuredServerLanguage + "，将使用 en_US。", configuredServerLanguage));
+            this.serverLanguage = "en_US";
         } else {
             this.serverLanguage = configuredServerLanguage.trim();
         }
@@ -104,9 +104,9 @@ public class BridgeConfig {
         this.heartbeatIntervalSeconds = Math.max(1, config.getInt("push.heartbeat-interval-seconds", 25));
 
         // Database
-        this.databaseType = config.getString("database.type", "MYSQL");
+        this.databaseType = config.getString("database.type", "SQLITE");
         if (this.databaseType == null || this.databaseType.trim().isEmpty()) {
-            this.databaseType = "MYSQL";
+            this.databaseType = "SQLITE";
         }
         this.databaseType = this.databaseType.toUpperCase();
         this.mysqlHost = config.getString("database.mysql.host", "127.0.0.1");
@@ -116,13 +116,13 @@ public class BridgeConfig {
         this.mysqlPassword = config.getString("database.mysql.password", "");
         this.mysqlMaxPoolSize = Math.max(1, config.getInt("database.mysql.pool.maximum-pool-size", 10));
         this.mysqlMinIdle = Math.max(0, config.getInt("database.mysql.pool.minimum-idle", 2));
-        this.sqliteFilePath = config.getString("database.sqlite.file-path", "AuctionHouse/auctionhouse.db");
+        this.sqliteFilePath = config.getString("database.sqlite.file-path", "AuctionHouse/auctions.db");
         if (this.sqliteFilePath == null || this.sqliteFilePath.trim().isEmpty()) {
-            this.sqliteFilePath = "AuctionHouse/auctionhouse.db";
+            this.sqliteFilePath = "AuctionHouse/auctions.db";
         }
-        this.tableName = config.getString("database.table-name", "auctions");
+        this.tableName = config.getString("database.table-name", "listings");
         if (this.tableName == null || this.tableName.trim().isEmpty()) {
-            this.tableName = "auctions";
+            this.tableName = "listings";
         }
 
         // Fallback

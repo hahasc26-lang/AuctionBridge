@@ -29,6 +29,17 @@ public class AuctionBridgeEventBus {
         public String getCode() { return code; }
     }
 
+    // 广播事件去重防抖缓存 (5秒内相同物品的同类事件自动去重抑制)
+    private static final long DEDUPLICATION_WINDOW_MS = 5000L;
+    private final java.util.Map<String, Long> recentEventCache = java.util.Collections.synchronizedMap(
+            new java.util.LinkedHashMap<>(128, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(java.util.Map.Entry<String, Long> eldest) {
+                    return size() > 1000;
+                }
+            }
+    );
+
     public AuctionBridgeEventBus(JavaPlugin plugin) {
         this.plugin = plugin;
     }
@@ -45,6 +56,17 @@ public class AuctionBridgeEventBus {
      * 广播拍卖事件给所有已连接的客户端 (WebSocket & SSE)
      */
     public void publish(EventType type, AuctionItem item, String extraDetails) {
+        if (item != null && item.getId() > 0) {
+            String dedupKey = type.getCode() + ":" + item.getId();
+            long now = System.currentTimeMillis();
+            Long lastPublished = recentEventCache.get(dedupKey);
+            if (lastPublished != null && (now - lastPublished) < DEDUPLICATION_WINDOW_MS) {
+                // 命中去重窗口，忽略重复广播
+                return;
+            }
+            recentEventCache.put(dedupKey, now);
+        }
+
         JsonObject json = new JsonObject();
         json.addProperty("event", type.getCode());
         json.addProperty("timestamp", System.currentTimeMillis());

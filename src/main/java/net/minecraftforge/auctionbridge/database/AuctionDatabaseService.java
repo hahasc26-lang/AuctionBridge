@@ -120,6 +120,31 @@ public class AuctionDatabaseService {
      * 多条件分页查询数据库中保留的拍卖记录 (只读查询)
      */
     public List<AuctionItem> queryAuctions(String status, String search, Double minPrice, Double maxPrice, String sellerUuid, String sort, int page, int pageSize) {
+        List<AuctionItem> items = executeQueryAuctions(status, search, minPrice, maxPrice, sellerUuid, sort, page, pageSize);
+        // 若指定了 search 但 SQL 检索返回为空，极大概率为底层采用 GZIP 二进制 BLOB 导致 SQL LIKE 失效
+        // 此时自动回退到内存反序列化匹配
+        if (items.isEmpty() && search != null && !search.trim().isEmpty()) {
+            List<AuctionItem> candidates = executeQueryAuctions(status, null, minPrice, maxPrice, sellerUuid, sort, 1, 300);
+            String searchLower = search.trim().toLowerCase(Locale.ROOT);
+            List<AuctionItem> matched = new ArrayList<>();
+            for (AuctionItem candidate : candidates) {
+                if (matchesSearch(candidate, searchLower)) {
+                    matched.add(candidate);
+                }
+            }
+            int safePage = Math.max(1, page);
+            int safeSize = Math.min(100, Math.max(1, pageSize));
+            int fromIndex = (safePage - 1) * safeSize;
+            if (fromIndex < matched.size()) {
+                int toIndex = Math.min(fromIndex + safeSize, matched.size());
+                return matched.subList(fromIndex, toIndex);
+            }
+            return Collections.emptyList();
+        }
+        return items;
+    }
+
+    private List<AuctionItem> executeQueryAuctions(String status, String search, Double minPrice, Double maxPrice, String sellerUuid, String sort, int page, int pageSize) {
         List<AuctionItem> items = new ArrayList<>();
         if (dataSource == null || dataSource.isClosed()) {
             throw new DatabaseQueryException("Auction database is not initialized.", null);
@@ -163,6 +188,27 @@ public class AuctionDatabaseService {
         return items;
     }
 
+    private boolean matchesSearch(AuctionItem item, String searchLower) {
+        if (item == null || searchLower.isEmpty()) return true;
+        if (item.getItemName() != null && item.getItemName().toLowerCase(Locale.ROOT).contains(searchLower)) {
+            return true;
+        }
+        if (item.getMaterial() != null && item.getMaterial().toLowerCase(Locale.ROOT).contains(searchLower)) {
+            return true;
+        }
+        if (item.getDisplayName() != null && item.getDisplayName().toLowerCase(Locale.ROOT).contains(searchLower)) {
+            return true;
+        }
+        if (item.getLore() != null) {
+            for (String line : item.getLore()) {
+                if (line != null && line.toLowerCase(Locale.ROOT).contains(searchLower)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     public long countAuctions(String status, String search, Double minPrice, Double maxPrice, String sellerUuid) {
         if (dataSource == null || dataSource.isClosed()) {
             throw new DatabaseQueryException("Auction database is not initialized.", null);
@@ -185,6 +231,18 @@ public class AuctionDatabaseService {
             }
             try (ResultSet rs = ps.executeQuery()) {
                 long total = rs.next() ? rs.getLong("total_count") : 0L;
+                // 若 search 不为空且计数为 0，可能因 GZIP 二进制 BLOB 导致 LIKE 失效，使用反序列化回退计数
+                if (total == 0L && search != null && !search.trim().isEmpty()) {
+                    List<AuctionItem> candidates = executeQueryAuctions(status, null, minPrice, maxPrice, sellerUuid, "id_desc", 1, 300);
+                    String searchLower = search.trim().toLowerCase(Locale.ROOT);
+                    long matchedCount = 0L;
+                    for (AuctionItem candidate : candidates) {
+                        if (matchesSearch(candidate, searchLower)) {
+                            matchedCount++;
+                        }
+                    }
+                    total = matchedCount;
+                }
                 if (countCache.size() > 200) {
                     countCache.clear();
                 }
@@ -299,6 +357,68 @@ public class AuctionDatabaseService {
             plugin.getLogger().fine("Failed to query recent active item IDs: " + e.getMessage());
         }
         return ids;
+    }
+
+    /**
+     * 批量查询追踪商品在数据库中的现存状态结果
+     */
+    public static class TrackedStatusResult {
+        private final List<AuctionItem> soldItems = new ArrayList<>();
+        private final Set<Long> activeIds = new HashSet<>();
+        private final Set<Long> missingIds = new HashSet<>();
+
+        public List<AuctionItem> getSoldItems() { return soldItems; }
+        public Set<Long> getActiveIds() { return activeIds; }
+        public Set<Long> getMissingIds() { return missingIds; }
+    }
+
+    /**
+     * 批量检查被追踪商品在数据库中的现存状态（识别已售出、仍在售以及已被物理删除/取消的物品）
+     */
+    public TrackedStatusResult inspectTrackedItems(Collection<Long> ids) {
+        TrackedStatusResult result = new TrackedStatusResult();
+        if (ids == null || ids.isEmpty() || dataSource == null || dataSource.isClosed()) {
+            return result;
+        }
+
+        String tableName = sanitizeTableName(config.getTableName());
+        StringBuilder inClause = new StringBuilder();
+        int size = ids.size();
+        for (int i = 0; i < size; i++) {
+            if (i > 0) inClause.append(",");
+            inClause.append("?");
+        }
+
+        String sql = "SELECT * FROM " + tableName + " WHERE id IN (" + inClause + ")";
+        Set<Long> foundIds = new HashSet<>();
+        try (Connection conn = dataSource.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            int index = 1;
+            for (Long id : ids) {
+                ps.setLong(index++, id);
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    long id = rs.getLong("id");
+                    foundIds.add(id);
+                    String buyerUuid = getStringOrFallback(rs, "buyer_uuid", "buyer");
+                    if (buyerUuid != null && !buyerUuid.trim().isEmpty()) {
+                        result.soldItems.add(mapResultSetToAuctionItem(rs));
+                    } else {
+                        result.activeIds.add(id);
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().fine("Failed to inspect tracked item IDs: " + e.getMessage());
+        }
+
+        for (Long id : ids) {
+            if (!foundIds.contains(id)) {
+                result.missingIds.add(id);
+            }
+        }
+        return result;
     }
 
     /**

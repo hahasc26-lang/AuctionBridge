@@ -5,6 +5,33 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-10-10
+
+### Fixed
+
+- **Event Deduplication & False-Positive Prevention**:
+  - Introduced a 1000-entry 5-second LRU deduplication window in `AuctionBridgeEventBus` to automatically suppress duplicate broadcasts for the same item and action, completely resolving duplicate pushes between command auditing and background delta scanning.
+  - Added timestamp verification in `CommandAndEconomyWatcher` to verify that newly reported items correspond to recent command execution, eliminating false `ITEM_LISTED` broadcasts when player `/ah sell` commands fail.
+- **In-Memory Fallback for GZIP Item BLOBs**:
+  - Resolved an issue where SQL `AND item LIKE ?` queries failed completely against AuctionHouse databases storing item data as GZIP-compressed binary BLOBs.
+  - Implemented an automatic in-memory fallback search that pulls candidate active listings and evaluates query matches against deserialized display names, material types, and lore text.
+- **Ghost Slot Purge & Cancellation Detection**:
+  - Added batch state inspection (`inspectTrackedItems`) in `AuctionDatabaseService` and `DatabaseWatcherTask` to detect listings physically deleted from the database (e.g. via player `/ah cancel` or expiration).
+  - Eliminated ghost slot leaks in the 300-entry tracking set and began publishing `ITEM_CANCELLED` events when tracked listings disappear.
+- **Thread-Safe WebSocket Session Writes**:
+  - Wrapped WebSocket session sends with mutual exclusion locks (`synchronized(ctx.session)`) in `WebSocketBroadcastService`, preventing Jetty `write already in progress` concurrency exceptions and unintended client disconnects during simultaneous event broadcasts and heartbeat pings.
+- **W3C CORS Standard Compliance**:
+  - Corrected a specification violation in `CorsFilter` where `rule.anyHost()` and `rule.allowCredentials = true` were enabled simultaneously; credentials are now automatically disabled when wildcard origins are used.
+- **Aligned Default Configurations**:
+  - Unified default hardcoded fallbacks in `BridgeConfig` and `AuctionBridgePlugin` (host `127.0.0.1`, database type `SQLITE`, SQLite path `AuctionHouse/auctions.db`, table name `listings`, and server language `en_US`) with the `config.yml` resource template.
+- **Synchronized Localization Entry Refresh**:
+  - Extended dashboard version refresh in `HttpServerService` to update localized redirect entry pages (`index_zh_CN.html`, `index_zh_TW.html`, `index_en_US.html`) alongside the primary `index.html`.
+
+### Changed
+
+- **Hard Dependency Declaration**:
+  - Updated `plugin.yml` to declare `HahaWebPlugin` under `depend: [HahaWebPlugin]` rather than `softdepend`, accurately representing its mandatory status as the shared runtime provider.
+
 ## [1.0.3] - 2026-10-10
 
 ### Added

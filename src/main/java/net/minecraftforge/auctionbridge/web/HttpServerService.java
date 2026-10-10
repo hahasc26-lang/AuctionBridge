@@ -208,6 +208,16 @@ public class HttpServerService {
                 throw new IOException("Bundled dashboard resource is missing.");
             }
             Files.copy(bundledDashboard, dashboardIndex.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            // 同步刷新各多语言跳转入口页面，避免旧版本跳转逻辑残留失效
+            for (String language : new String[]{"zh_CN", "zh_TW", "en_US"}) {
+                String subPath = "web/index_" + language + ".html";
+                File subFile = new File(plugin.getDataFolder(), subPath);
+                try (var bundledSub = plugin.getResource(subPath)) {
+                    if (bundledSub != null) {
+                        Files.copy(bundledSub, subFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                    }
+                } catch (IOException ignored) {}
+            }
             String message = plugin instanceof AuctionBridgePlugin auctionBridgePlugin
                     ? auctionBridgePlugin.lang("web.oldDashboardRefreshed")
                     : "Refreshed the outdated dashboard.";

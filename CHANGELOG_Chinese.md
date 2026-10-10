@@ -3,6 +3,33 @@
 所有版本的重要变更均记录于此。  
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [1.0.4] - 2026-10-10
+
+### 修复 / Fixed
+
+- **事件广播防抖去重与虚假误报消除 (Event Deduplication & False-Positive Prevention)**：
+  - 在事件总线中引入容量为 1000 的 5 秒 LRU 防抖去重队列，相同物品的同类状态事件自动去重抑制，彻底消除了命令审计降级与后台增量扫描器之间的**双重重复广播**。
+  - 在命令审计监视器中增加执行时间戳与物品创建时间校验，杜绝玩家在 `/ah sell` 命令执行失败时误将历史在售旧物品当作新上架广播。
+- **GZIP 二进制 BLOB 智能检索回退 (In-Memory Fallback for GZIP Item BLOBs)**：
+  - 攻克了由于底层数据库将物品存储为 GZIP 压缩二进制流导致 SQL `AND item LIKE ?` 模糊匹配完全失效的难题。
+  - 当 SQL 检索返回为空时，系统自动拉取在售候选条目，并在内存中对反序列化后的展示名称、原生物品材质以及 Lore 文本进行全文字段智能匹配，完美兼顾纯文本与 GZIP 压缩数据。
+- **在售追踪队列幽灵 ID 清理与下架感知 (Ghost Slot Purge & Cancellation Detection)**：
+  - 引入批量追踪状态探针（`inspectTrackedItems`），主动比对识别在数据库中已被物理删除（玩家取消 `/ah cancel` 或物品过期被清理）的商品 ID。
+  - 彻底解决了 300 容量追踪队列因被已删除商品占满而导致的**幽灵槽位泄漏**与后续售出漏报问题，并能在物品被删除时向前端主动推送 `ITEM_CANCELLED` 下架事件。
+- **WebSocket 会话多线程并发写保护 (Thread-Safe WebSocket Session Writes)**：
+  - 封装安全的同步发送逻辑，在底层 Jetty WebSocket 会话实例上加互斥锁，彻底杜绝了广播线程与定时心跳 Ping 并发向同一客户端写入时触发的 `write already in progress` 异常及误踢正常客户端的问题。
+- **CORS 跨域凭据标准合规 (W3C CORS Compliance)**：
+  - 解决 `rule.anyHost()` 与 `rule.allowCredentials = true` 同时启用违反 W3C CORS 规范的问题；当未指定域名或包含通配符 `*` 时自动禁用凭据共享，避免现代浏览器在跨域请求时直接拦截报错。
+- **配置回退默认值与模板统一 (Aligned Default Configurations)**：
+  - 将 `BridgeConfig` 与主类中的缺省回退值（主机 `127.0.0.1`、数据库类型 `SQLITE`、数据表 `listings`、语言 `en_US` 等）与 `config.yml` 资源模板完全对齐，消除缺项时的解析报错。
+- **多语言跳转页同步热更新 (Synchronized Localization Entry Refresh)**：
+  - 完善仪表盘热更新机制，在重新释放最新的 `web/index.html` 时，同步覆盖刷新 `index_zh_CN.html` 等多语言跳转页，防止旧版跳转脚本滞留失效。
+
+### 变更 / Changed
+
+- **前置依赖声明规范化 (Dependency Lifecycle Alignment)**：
+  - 将运行时必需类库宿主 `HahaWebPlugin` 在 `plugin.yml` 中调整为显式硬依赖 `depend: [HahaWebPlugin]`，确保服务端加载器能精确识别前置依赖关系，避免因误当软依赖而产生启动异常。
+
 ## [1.0.3] - 2026-10-10
 
 ### 新增 / Added

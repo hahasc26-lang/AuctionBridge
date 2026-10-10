@@ -33,10 +33,10 @@ public final class AuctionBridgePlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
-        String configuredLanguage = getConfig().getString("server.language", "zh_CN");
+        String configuredLanguage = getConfig().getString("server.language", "en_US");
         this.serverLanguage = new ServerLanguage(this,
                 List.of("zh_CN", "zh_TW", "en_US").contains(configuredLanguage == null ? "" : configuredLanguage.trim())
-                        ? configuredLanguage.trim() : "zh_CN");
+                        ? configuredLanguage.trim() : "en_US");
         if (!checkSharedRuntime()) {
             getServer().getPluginManager().disablePlugin(this);
             return;

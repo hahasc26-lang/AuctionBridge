@@ -36,13 +36,20 @@ public class CommandAndEconomyWatcher implements Listener {
         if (cmd.startsWith("/ah sell") || cmd.startsWith("/auction sell") || cmd.startsWith("/ah list")) {
             final String playerName = event.getPlayer().getName();
             final String playerUuid = event.getPlayer().getUniqueId().toString();
+            final long commandTime = System.currentTimeMillis();
 
-            // 延迟 1 秒异步读取数据库（等待 AuctionHouse 插件完成写入）
+            // 延迟 1.25 秒异步读取数据库（等待第三方插件完成写入）
             plugin.getServer().getScheduler().runTaskLaterAsynchronously(plugin, () -> {
                 try {
                     var latest = databaseService.queryAuctions("ACTIVE", null, null, null, playerUuid, "id_desc", 1, 1);
                     if (!latest.isEmpty()) {
                         var item = latest.get(0);
+                        // 校验该物品是否确实为本次命令产生的新物品，防止命令失败时误播历史旧物品
+                        long createdAt = item.getCreatedAt();
+                        if (createdAt > 0 && createdAt < (commandTime - 5000L)) {
+                            // 该在售物品创建时间早于命令触发时刻，说明本次命令未成功上架新物品
+                            return;
+                        }
                         eventBus.publish(AuctionBridgeEventBus.EventType.ITEM_LISTED, item, "Triggered by player command audit: " + playerName);
                     }
                 } catch (Exception ignored) {}

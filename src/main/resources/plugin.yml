@@ -4,8 +4,9 @@ main: net.minecraftforge.auctionbridge.AuctionBridgePlugin
 api-version: '1.16'
 author: AuctionBridgeTeam
 description: High-performance read-only Web Gateway and real-time WebSocket stream for Minecraft AuctionHouse
-softdepend:
+depend:
   - HahaWebPlugin
+softdepend:
   - Vault
   - AuctionHouse
   - akAuctionHouse
